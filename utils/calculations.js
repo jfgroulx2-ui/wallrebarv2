@@ -74,6 +74,11 @@ export function calculerLs({
   };
 }
 
+export function calculerLsCompression({ barSize, fc, fy }) {
+  const { ldc } = calculerLdc({ barSize, fc, fy });
+  return { ls_c: Math.max(300, Math.round(1.3 * ldc)), clause: "12.16.1" };
+}
+
 export function computeBarLengths(barSize, geometry) {
   const { fc, fy, k1, k2, lambda } = geometry;
   const args = { barSize, fc, fy, k1, k2, lambda };
@@ -82,8 +87,9 @@ export function computeBarLengths(barSize, geometry) {
     ...calculerLd(args),
     ...calculerLdc({ barSize, fc, fy }),
     ...calculerLdh({ barSize, fc, fy }),
-    ls_A: calculerLs({ ...args, As_fourni: 999999, As_requis: 1, pct_recouvert: 50 }).ls,
-    ls_B: calculerLs({ ...args, As_fourni: 100, As_requis: 100, pct_recouvert: 100 }).ls,
+    ls_A: calculerLs({ ...args, As_fourni: 999999, As_requis: 1, pct_recouvert: 0 }).ls,
+    ls_B: calculerLs({ ...args, pct_recouvert: 100 }).ls,
+    ls_C: calculerLsCompression({ barSize, fc, fy }).ls_c,
   };
 }
 
@@ -94,5 +100,15 @@ export function computeAllDerivedLengths(geometry, rebar) {
     horiz_ext: computeBarLengths(rebar.horiz_ext.size, geometry),
     horiz_int: computeBarLengths(rebar.horiz_int.size, geometry),
     ties: computeBarLengths(rebar.ties.size, geometry),
+  };
+}
+
+export function computeReinforcementRatios(geometry, rebar) {
+  const As_v = BARS[rebar.vert_ext.size].Ab / rebar.vert_ext.spacing + BARS[rebar.vert_int.size].Ab / rebar.vert_int.spacing;
+  const As_h = BARS[rebar.horiz_ext.size].Ab / rebar.horiz_ext.spacing + BARS[rebar.horiz_int.size].Ab / rebar.horiz_int.spacing;
+
+  return {
+    rho_v: As_v / geometry.thickness / 100,
+    rho_h: As_h / geometry.thickness / 100,
   };
 }
