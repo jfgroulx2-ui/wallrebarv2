@@ -1,0 +1,17 @@
+export const OBJECT_TYPES = {
+  LINE: "line",
+  POLYLINE: "polyline",
+  RECTANGLE: "rectangle",
+  WALL: "wall",
+  FOOTING: "footing",
+  SLAB: "slab",
+  SOIL: "soil",
+  REF_LEVEL: "ref_level",
+  REBAR: "rebar",
+  REBAR_SERIES: "rebar_series",
+  REBAR_LAYER: "rebar_layer",
+  DOWEL: "dowel",
+  ANNOTATION: "annotation",
+  DIMENSION: "dimension",
+  NOTE: "note",
+};

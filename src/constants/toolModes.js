@@ -1,0 +1,18 @@
+export const TOOLS = {
+  SELECT: "select",
+  PAN: "pan",
+  LINE: "line",
+  POLYLINE: "polyline",
+  RECTANGLE: "rectangle",
+  WALL: "wall",
+  SLAB: "slab",
+  REF_LEVEL: "ref_level",
+  SOIL_ZONE: "soil_zone",
+  REBAR: "rebar",
+  REBAR_SERIES: "rebar_series",
+  REBAR_LAYER: "rebar_layer",
+  DOWEL: "dowel",
+  ANNOTATE: "annotate",
+  DIMENSION: "dimension",
+  NOTE: "note",
+};

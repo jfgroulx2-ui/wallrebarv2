@@ -1,33 +1,36 @@
-import { drawHorizontalAnnotation, drawVerticalAnnotation } from "./drawAnnotations.js";
-import { drawCalibrationLine, drawCalibrationPoint } from "./drawCalibration.js";
+import { renderGrid } from "./renderGrid.js";
+import { renderObject } from "./renderObjects.js";
+import { renderSelectionHandles } from "./renderSelection.js";
+import { renderSnapIndicator } from "./renderSnapIndicator.js";
 
-export function renderAll(ctx, canvas, pdf, calibration, view, selectedId, draftAnnotation, hoverId) {
+export function renderAll(ctx, canvas, storeSnapshot) {
+  const { objects, objectOrder, view, grid, layers, selectedIds, draftObject, snapPoint } = storeSnapshot;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  if (!pdf.bitmap) return;
+  ctx.fillStyle = "#0a0f1e";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  ctx.save();
-  ctx.translate(view.offsetX, view.offsetY);
-  ctx.scale(view.zoom, view.zoom);
+  renderGrid(ctx, canvas, view, grid);
 
-  ctx.drawImage(pdf.bitmap, 0, 0, pdf.nativeW, pdf.nativeH);
+  const orderedObjects = objectOrder
+    .map((id) => objects[id])
+    .filter((object) => object && layers[object.category]?.visible);
 
-  const annotations = pdf.annotations[pdf.currentPage] || [];
-  annotations.forEach((annotation) => {
-    const selected = annotation.id === selectedId;
-    const hover = annotation.id === hoverId;
-    const drawAnnotation = annotation.type === "vertical" ? drawVerticalAnnotation : drawHorizontalAnnotation;
-    drawAnnotation(ctx, annotation, selected, hover, view.zoom);
+  ["structure", "geometry", "reinforcement", "reference", "annotation"].forEach((category) => {
+    orderedObjects
+      .filter((object) => object.category === category)
+      .forEach((object) => renderObject(ctx, object, view, selectedIds.includes(object.id), false));
   });
 
-  if (draftAnnotation) {
-    const drawDraft = draftAnnotation.type === "vertical" ? drawVerticalAnnotation : drawHorizontalAnnotation;
-    drawDraft(ctx, draftAnnotation, false, true, view.zoom);
+  if (draftObject) {
+    renderObject(ctx, draftObject, view, false, true);
   }
 
-  if (calibration.point1) drawCalibrationPoint(ctx, calibration.point1, view.zoom);
-  if (calibration.point2) drawCalibrationPoint(ctx, calibration.point2, view.zoom);
-  if (calibration.point1 && calibration.point2) drawCalibrationLine(ctx, calibration.point1, calibration.point2, view.zoom);
+  if (snapPoint) {
+    renderSnapIndicator(ctx, snapPoint, view);
+  }
 
-  ctx.restore();
+  selectedIds.forEach((id) => {
+    if (objects[id]) renderSelectionHandles(ctx, objects[id], view);
+  });
 }

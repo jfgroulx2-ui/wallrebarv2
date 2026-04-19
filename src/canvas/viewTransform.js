@@ -1,14 +1,14 @@
-export function canvasToPdf(cx, cy, view) {
+export function worldToCanvas(x_mm, y_mm, view) {
   return {
-    x: (cx - view.offsetX) / view.zoom,
-    y: (cy - view.offsetY) / view.zoom,
+    x: x_mm * view.zoom + view.offsetX,
+    y: -y_mm * view.zoom + view.offsetY,
   };
 }
 
-export function pdfToCanvas(px, py, view) {
+export function canvasToWorld(cx, cy, view) {
   return {
-    x: px * view.zoom + view.offsetX,
-    y: py * view.zoom + view.offsetY,
+    x_mm: (cx - view.offsetX) / view.zoom,
+    y_mm: -(cy - view.offsetY) / view.zoom,
   };
 }
 
@@ -20,26 +20,17 @@ export function zoomAtPoint(view, nextZoom, cx, cy) {
   };
 }
 
-export function getViewportCenter(containerWidth, containerHeight) {
-  return {
-    x: containerWidth / 2,
-    y: containerHeight / 2,
-  };
-}
-
-export function fitView(containerWidth, containerHeight, pdfWidth, pdfHeight, padding = 24) {
-  if (!pdfWidth || !pdfHeight || !containerWidth || !containerHeight) {
-    return { zoom: 1, offsetX: 0, offsetY: 0 };
-  }
-
+export function fitView(canvasWidth, canvasHeight, bounds, padding = 80) {
+  const width = Math.max(1, bounds.maxX - bounds.minX);
+  const height = Math.max(1, bounds.maxY - bounds.minY);
   const zoom = Math.min(
-    (containerWidth - padding * 2) / pdfWidth,
-    (containerHeight - padding * 2) / pdfHeight,
+    Math.max(0.05, (canvasWidth - padding * 2) / width),
+    Math.max(0.05, (canvasHeight - padding * 2) / height),
   );
 
   return {
     zoom,
-    offsetX: (containerWidth - pdfWidth * zoom) / 2,
-    offsetY: (containerHeight - pdfHeight * zoom) / 2,
+    offsetX: padding - bounds.minX * zoom + (canvasWidth - padding * 2 - width * zoom) / 2,
+    offsetY: padding + bounds.maxY * zoom + (canvasHeight - padding * 2 - height * zoom) / 2,
   };
 }

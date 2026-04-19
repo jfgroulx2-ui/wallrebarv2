@@ -1,55 +1,56 @@
-export function buildExportJSON(pdf, calibration) {
+function exportObject(object) {
   return {
-    gbi_rebar_annotations: {
+    id: object.id,
+    type: object.type,
+    category: object.category,
+    layer: object.layer,
+    geometry: object.geometry,
+    properties: object.properties,
+    linkedAnnotations: object.linkedAnnotations || [],
+    parentId: object.parentId ?? null,
+    childIds: object.childIds || [],
+  };
+}
+
+export function buildExportJSON(store) {
+  const allObjects = Object.values(store.objects);
+  const structural = allObjects.filter((object) => object.category !== "annotation");
+  const annotations = allObjects.filter((object) => object.category === "annotation");
+
+  const relations = [];
+  structural.forEach((object) => {
+    (object.linkedAnnotations || []).forEach((annotationId) => {
+      const annotation = store.objects[annotationId];
+      if (annotation) {
+        relations.push({
+          type: "annotation_link",
+          sourceId: object.id,
+          targetId: annotationId,
+          autoUpdate: annotation.properties.autoUpdate,
+        });
+      }
+    });
+  });
+
+  return {
+    gbi_wall_detail: {
       metadata: {
-        tool: "GBI Rebar Annotator",
+        tool: "GBI Wall Detail Studio",
         version: "1.0",
         date: new Date().toISOString(),
         units: "mm",
-        source_pdf: pdf.sourceName || null,
+        author: "",
+        project: "",
       },
-      calibration: {
-        validated: calibration.validated,
-        scale_px_mm: calibration.scalePxMm,
-        mm_per_px: calibration.scalePxMm ? 1 / calibration.scalePxMm : null,
-        point1_pdf: calibration.point1,
-        point2_pdf: calibration.point2,
-        distance_px: calibration.distancePx ?? null,
-        distance_mm: calibration.distanceMm === "" ? null : Number(calibration.distanceMm),
-      },
-      pages: Array.from({ length: pdf.pageCount || 0 }, (_, index) => {
-        const page = index + 1;
-        const annotations = pdf.annotations[page] || [];
-        return {
-          page,
-          annotation_count: annotations.length,
-          annotations: annotations.map((annotation) => ({
-            id: annotation.id,
-            type: annotation.type,
-            barSize: annotation.barSize,
-            spacing_mm: annotation.spacing_mm,
-            cover_mm: annotation.cover_mm,
-            face: annotation.face,
-            note: annotation.note,
-            locked: annotation.locked,
-            position: {
-              x_pdf: annotation.x_pdf,
-              y_pdf: annotation.y_pdf,
-              x_mm: annotation.x_mm,
-              y_mm: annotation.y_mm,
-            },
-            geometry: {
-              length_pdf: annotation.length_pdf,
-              length_mm: annotation.length_mm,
-            },
-          })),
-        };
-      }),
+      origin: store.origin,
+      objects: structural.map(exportObject),
+      annotations: annotations.map(exportObject),
+      relations,
     },
   };
 }
 
-export function getFilename(sourceName) {
-  const base = sourceName?.replace(/\.pdf$/i, "") ?? "annotations";
+export function getFilename(projectName) {
+  const base = projectName?.trim() || "detail";
   return `${base}_armature.json`;
 }

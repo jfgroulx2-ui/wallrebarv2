@@ -1,34 +1,32 @@
-import { FileUp } from "lucide-react";
-
-function modeLabel(mode) {
+function labelForTool(tool) {
   return {
-    idle: "Navigation",
-    calibrate: "Calibration",
-    annot_vertical: "Barre verticale",
-    annot_horizontal: "Barre horizontale",
     select: "Selection",
     pan: "Pan",
-  }[mode];
+    line: "Ligne",
+    polyline: "Polyligne",
+    rectangle: "Rectangle",
+    wall: "Mur",
+    rebar: "Barre",
+    rebar_series: "Serie",
+    rebar_layer: "Nappe",
+    dowel: "Goujon",
+    annotate: "Annotation",
+    dimension: "Cote",
+  }[tool] || tool;
 }
 
-export default function Header({ calibration, mode, onImportPdf, pdf }) {
+export default function Header({ activeTool, cursorWorld }) {
   return (
-    <header className="topbar">
+    <header className="studio-header">
       <div>
         <p className="eyebrow">GBI Experts-Conseils</p>
-        <h1>Rebar Annotator</h1>
-        <p className="tagline">Annoter l'armature directement sur une coupe PDF, puis exporter en JSON.</p>
+        <h1>Wall Detail Studio</h1>
       </div>
-
-      <div className="topbar-actions">
-        <button className="ghost-button" type="button" onClick={onImportPdf}>
-          <FileUp size={16} />
-          {pdf.loaded ? "Remplacer PDF" : "Importer PDF"}
-        </button>
-        <div className={`status-pill ${calibration.validated ? "status-ok" : "status-warning"}`}>
-          {calibration.validated ? "Calibre" : "Non calibre"}
+      <div className="header-status">
+        <div className="badge neutral">Outil actif: {labelForTool(activeTool)}</div>
+        <div className="badge neutral">
+          x: {cursorWorld.x_mm.toFixed(1)} mm | y: {cursorWorld.y_mm.toFixed(1)} mm
         </div>
-        <div className="status-pill status-neutral">{modeLabel(mode)}</div>
       </div>
     </header>
   );
