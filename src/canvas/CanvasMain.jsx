@@ -3,7 +3,7 @@ import DropZone from "../components/DropZone.jsx";
 import ZoomControls from "../components/ZoomControls.jsx";
 import PageNav from "../components/PageNav.jsx";
 import { renderAll } from "./renderAll.js";
-import { canvasToPdf, fitView, zoomAtPoint } from "./viewTransform.js";
+import { canvasToPdf, fitView, getViewportCenter, zoomAtPoint } from "./viewTransform.js";
 import { hitTestAnnotation } from "../utils/annotations.js";
 
 function defaultDraft(type, point) {
@@ -43,6 +43,7 @@ export default function CanvasMain({
   const wrapperRef = useRef(null);
   const canvasRef = useRef(null);
   const actionRef = useRef({ type: null });
+  const spacePressedRef = useRef(false);
   const [hoverId, setHoverId] = useState(null);
 
   useEffect(() => {
@@ -74,6 +75,27 @@ export default function CanvasMain({
     setView(fitView(rect.width, rect.height, pdf.nativeW, pdf.nativeH));
   }, [pdf.currentPage, pdf.loaded, pdf.nativeW, pdf.nativeH, setView]);
 
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      if (event.code === "Space") {
+        spacePressedRef.current = true;
+      }
+    };
+
+    const handleKeyUp = (event) => {
+      if (event.code === "Space") {
+        spacePressedRef.current = false;
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+    };
+  }, []);
+
   const getCanvasPoint = (event) => {
     const rect = canvasRef.current.getBoundingClientRect();
     return {
@@ -93,11 +115,13 @@ export default function CanvasMain({
 
   const handleMouseDown = (event) => {
     if (!pdf.loaded) return;
+    if (event.button === 2) return;
 
     const canvasPoint = getCanvasPoint(event);
     const pdfPoint = canvasToPdf(canvasPoint.x, canvasPoint.y, view);
+    const panIntent = mode === "pan" || spacePressedRef.current || event.button === 1;
 
-    if (mode === "pan" || (mode === "idle" && event.button === 1)) {
+    if (panIntent) {
       beginPan(canvasPoint);
       return;
     }
@@ -128,6 +152,8 @@ export default function CanvasMain({
       const type = mode === "annot_vertical" ? "vertical" : "horizontal";
       actionRef.current = { type: "draw", startPoint: pdfPoint };
       setDraftAnnotation(defaultDraft(type, pdfPoint));
+      setSelectedId(null);
+      setHoverId(null);
       return;
     }
 
@@ -142,7 +168,14 @@ export default function CanvasMain({
           startX: hit.x_pdf,
           startY: hit.y_pdf,
         };
+      } else {
+        actionRef.current = { type: null };
       }
+      return;
+    }
+
+    if (mode === "idle") {
+      beginPan(canvasPoint);
     }
   };
 
@@ -198,7 +231,8 @@ export default function CanvasMain({
 
   const handleMouseUp = () => {
     if (actionRef.current.type === "draw" && draftAnnotation) {
-      const length = draftAnnotation.length_pdf < 5 ? 120 : draftAnnotation.length_pdf;
+      const defaultLength = draftAnnotation.type === "vertical" ? 240 : 320;
+      const length = draftAnnotation.length_pdf < 5 ? defaultLength : draftAnnotation.length_pdf;
       onCreateAnnotation({ ...draftAnnotation, length_pdf: length });
       setDraftAnnotation(null);
     }
@@ -220,13 +254,27 @@ export default function CanvasMain({
     setView(fitView(rect.width, rect.height, pdf.nativeW, pdf.nativeH));
   };
 
+  const handleZoomOut = () => {
+    const rect = wrapperRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const center = getViewportCenter(rect.width, rect.height);
+    setView((prev) => zoomAtPoint(prev, Math.max(0.1, prev.zoom * 0.9), center.x, center.y));
+  };
+
+  const handleZoomIn = () => {
+    const rect = wrapperRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const center = getViewportCenter(rect.width, rect.height);
+    setView((prev) => zoomAtPoint(prev, Math.min(10, prev.zoom * 1.1), center.x, center.y));
+  };
+
   return (
     <div className="canvas-main">
       <div className="canvas-topbar">
         <ZoomControls
           zoom={view.zoom}
-          onZoomOut={() => setView((prev) => ({ ...zoomAtPoint(prev, Math.max(0.1, prev.zoom * 0.9), 0, 0) }))}
-          onZoomIn={() => setView((prev) => ({ ...zoomAtPoint(prev, Math.min(10, prev.zoom * 1.1), 0, 0) }))}
+          onZoomOut={handleZoomOut}
+          onZoomIn={handleZoomIn}
           onFit={handleFit}
         />
         <PageNav
@@ -249,6 +297,7 @@ export default function CanvasMain({
             onMouseUp={handleMouseUp}
             onMouseLeave={handleMouseUp}
             onWheel={handleWheel}
+            onContextMenu={(event) => event.preventDefault()}
           />
         )}
       </div>

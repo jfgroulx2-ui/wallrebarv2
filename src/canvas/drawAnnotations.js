@@ -1,28 +1,17 @@
-function drawArrowhead(ctx, x, y, direction, color, scale = 1) {
+function drawTerminator(ctx, x, y, orientation, color, scale = 1) {
   const size = 10 / scale;
-  ctx.fillStyle = color;
+  const half = size * 0.5;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2 / scale;
   ctx.beginPath();
-
-  if (direction === "up") {
-    ctx.moveTo(x, y - size);
-    ctx.lineTo(x - size * 0.6, y);
-    ctx.lineTo(x + size * 0.6, y);
-  } else if (direction === "down") {
-    ctx.moveTo(x, y + size);
-    ctx.lineTo(x - size * 0.6, y);
-    ctx.lineTo(x + size * 0.6, y);
-  } else if (direction === "left") {
-    ctx.moveTo(x - size, y);
-    ctx.lineTo(x, y - size * 0.6);
-    ctx.lineTo(x, y + size * 0.6);
+  if (orientation === "vertical") {
+    ctx.moveTo(x - half, y);
+    ctx.lineTo(x + half, y);
   } else {
-    ctx.moveTo(x + size, y);
-    ctx.lineTo(x, y - size * 0.6);
-    ctx.lineTo(x, y + size * 0.6);
+    ctx.moveTo(x, y - half);
+    ctx.lineTo(x, y + half);
   }
-
-  ctx.closePath();
-  ctx.fill();
+  ctx.stroke();
 }
 
 function drawAnnotationLabel(ctx, annotation, x, y, side, scale = 1) {
@@ -70,7 +59,8 @@ export function drawVerticalAnnotation(ctx, annotation, selected, hover, viewZoo
   const length = annotation.length_pdf;
 
   ctx.strokeStyle = color;
-  ctx.lineWidth = (selected ? 3 : 2) / viewZoom;
+  ctx.lineWidth = (selected ? 4 : 3) / viewZoom;
+  ctx.lineCap = "square";
   ctx.setLineDash(selected ? [6 / viewZoom, 3 / viewZoom] : []);
   ctx.beginPath();
   ctx.moveTo(x, y);
@@ -78,8 +68,8 @@ export function drawVerticalAnnotation(ctx, annotation, selected, hover, viewZoo
   ctx.stroke();
   ctx.setLineDash([]);
 
-  drawArrowhead(ctx, x, y, "up", color, viewZoom);
-  drawArrowhead(ctx, x, y + length, "down", color, viewZoom);
+  drawTerminator(ctx, x, y, "vertical", color, viewZoom);
+  drawTerminator(ctx, x, y + length, "vertical", color, viewZoom);
   drawAnnotationLabel(ctx, annotation, x, y + length / 2, "right", viewZoom);
 }
 
@@ -90,7 +80,8 @@ export function drawHorizontalAnnotation(ctx, annotation, selected, hover, viewZ
   const length = annotation.length_pdf;
 
   ctx.strokeStyle = color;
-  ctx.lineWidth = (selected ? 3 : 2) / viewZoom;
+  ctx.lineWidth = (selected ? 4 : 3) / viewZoom;
+  ctx.lineCap = "square";
   ctx.setLineDash(selected ? [6 / viewZoom, 3 / viewZoom] : []);
   ctx.beginPath();
   ctx.moveTo(x, y);
@@ -98,7 +89,7 @@ export function drawHorizontalAnnotation(ctx, annotation, selected, hover, viewZ
   ctx.stroke();
   ctx.setLineDash([]);
 
-  drawArrowhead(ctx, x, y, "left", color, viewZoom);
-  drawArrowhead(ctx, x + length, y, "right", color, viewZoom);
+  drawTerminator(ctx, x, y, "horizontal", color, viewZoom);
+  drawTerminator(ctx, x + length, y, "horizontal", color, viewZoom);
   drawAnnotationLabel(ctx, annotation, x + length / 2, y, "right", viewZoom);
 }

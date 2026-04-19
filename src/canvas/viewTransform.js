@@ -20,6 +20,13 @@ export function zoomAtPoint(view, nextZoom, cx, cy) {
   };
 }
 
+export function getViewportCenter(containerWidth, containerHeight) {
+  return {
+    x: containerWidth / 2,
+    y: containerHeight / 2,
+  };
+}
+
 export function fitView(containerWidth, containerHeight, pdfWidth, pdfHeight, padding = 24) {
   if (!pdfWidth || !pdfHeight || !containerWidth || !containerHeight) {
     return { zoom: 1, offsetX: 0, offsetY: 0 };

@@ -261,7 +261,7 @@ export default function App() {
   };
 
   const handleConfirmCalibration = () => {
-    setMode(MODES.SELECT);
+    setMode(MODES.ANNOT_V);
   };
 
   const handleExport = () => {
