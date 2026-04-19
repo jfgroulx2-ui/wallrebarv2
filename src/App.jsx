@@ -1,139 +1,330 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { defaultBarOverrides, defaultConditions, defaultDraw, defaultGeometry, defaultInteraction, defaultPdf, defaultRebar, defaultSpecial } from "./constants/defaults.js";
-import { computeAllDerivedLengths } from "./utils/calculations.js";
-import { computeBarPositions } from "./utils/coordinates.js";
-import { runValidations } from "./utils/validations.js";
-import { generateJSON, getFilename } from "./utils/jsonExport.js";
 import Header from "./components/Header.jsx";
-import TabBar from "./components/TabBar.jsx";
-import ValidationPanel from "./components/ValidationPanel.jsx";
-import LengthTable from "./components/LengthTable.jsx";
-import GuideDrawer from "./components/GuideDrawer.jsx";
-import BarDialog from "./components/BarDialog.jsx";
-import SnapHUD from "./components/SnapHUD.jsx";
-import SectionCanvas from "./canvas/SectionCanvas.jsx";
-import TabGeometry from "./components/tabs/TabGeometry.jsx";
-import TabRebar from "./components/tabs/TabRebar.jsx";
-import TabJoints from "./components/tabs/TabJoints.jsx";
-import TabSpecial from "./components/tabs/TabSpecial.jsx";
-import TabAppearance from "./components/tabs/TabAppearance.jsx";
-import TabReference from "./components/tabs/TabReference.jsx";
-import TabExport from "./components/tabs/TabExport.jsx";
+import LeftPanel from "./components/LeftPanel.jsx";
+import CanvasMain from "./canvas/CanvasMain.jsx";
+import { loadPDF, renderPage } from "./utils/pdfLoader.js";
+import { computeCalibration } from "./utils/calibration.js";
+import {
+  addAnnotation,
+  applyCalibrationToAnnotations,
+  buildAnnotation,
+  deleteAnnotation,
+  duplicateAnnotation,
+  updateAnnotation,
+} from "./utils/annotations.js";
+import { buildExportJSON, getFilename } from "./utils/jsonExport.js";
 
-function clone(value) {
-  return JSON.parse(JSON.stringify(value));
-}
+const MODES = {
+  IDLE: "idle",
+  CALIBRATE: "calibrate",
+  ANNOT_V: "annot_vertical",
+  ANNOT_H: "annot_horizontal",
+  SELECT: "select",
+  PAN: "pan",
+};
 
 export default function App() {
-  const inputRef = useRef(null);
-  const [activeTab, setActiveTab] = useState(1);
-  const [guideOpen, setGuideOpen] = useState(false);
-  const [geometry, setGeometry] = useState(clone(defaultGeometry));
-  const [rebar, setRebar] = useState(clone(defaultRebar));
-  const [conditions, setConditions] = useState(clone(defaultConditions));
-  const [special, setSpecial] = useState(clone(defaultSpecial));
-  const [draw, setDraw] = useState(clone(defaultDraw));
-  const [barOverrides, setBarOverrides] = useState(clone(defaultBarOverrides));
-  const [interaction, setInteraction] = useState(clone(defaultInteraction));
-  const [pdf, setPdf] = useState(clone(defaultPdf));
+  const fileInputRef = useRef(null);
+  const pdfDocRef = useRef(null);
+  const annotationCounter = useRef(1);
+
+  const [pdf, setPdf] = useState({
+    loaded: false,
+    bitmap: null,
+    pageCount: 0,
+    currentPage: 1,
+    nativeW: 0,
+    nativeH: 0,
+    sourceName: "",
+    annotations: {},
+  });
+
+  const [calibration, setCalibration] = useState({
+    active: false,
+    point1: null,
+    point2: null,
+    distanceMm: "",
+    distancePx: null,
+    scalePxMm: null,
+    validated: false,
+    label: "",
+  });
+
+  const [view, setView] = useState({
+    zoom: 1,
+    offsetX: 0,
+    offsetY: 0,
+  });
+
+  const [mode, setMode] = useState(MODES.IDLE);
+  const [selectedId, setSelectedId] = useState(null);
+  const [draftAnnotation, setDraftAnnotation] = useState(null);
+
+  const currentAnnotations = pdf.annotations[pdf.currentPage] || [];
+  const selectedAnnotation = currentAnnotations.find((annotation) => annotation.id === selectedId) || null;
+  const canExport = pdf.loaded && calibration.validated;
 
   useEffect(() => {
     return () => {
-      if (pdf.url) URL.revokeObjectURL(pdf.url);
+      if (pdf.bitmap?.close) pdf.bitmap.close();
     };
-  }, [pdf.url]);
+  }, [pdf.bitmap]);
 
-  const derived = useMemo(() => computeAllDerivedLengths(geometry, rebar), [geometry, rebar]);
-  const barPositions = useMemo(() => computeBarPositions(geometry, rebar), [geometry, rebar]);
-  const validations = useMemo(() => runValidations(geometry, rebar, conditions, special, derived), [geometry, rebar, conditions, special, derived]);
-  const errors = validations.filter((item) => item.level === "error");
-  const warnings = validations.filter((item) => item.level === "warning");
-  const exportPayload = useMemo(() => generateJSON(geometry, rebar, conditions, special, derived, barPositions, barOverrides, pdf), [geometry, rebar, conditions, special, derived, barPositions, barOverrides, pdf]);
-  const exportText = useMemo(() => JSON.stringify(exportPayload, null, 2), [exportPayload]);
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      if (event.key.toLowerCase() === "v" && calibration.validated) setMode(MODES.ANNOT_V);
+      if (event.key.toLowerCase() === "h" && calibration.validated) setMode(MODES.ANNOT_H);
+      if (event.key.toLowerCase() === "s" && calibration.validated) setMode(MODES.SELECT);
+      if (event.key === "Escape") {
+        setMode(MODES.IDLE);
+        setDraftAnnotation(null);
+      }
+      if (event.key === "Delete" && selectedId) {
+        setPdf((prev) => ({
+          ...prev,
+          annotations: deleteAnnotation(prev.annotations, prev.currentPage, selectedId),
+        }));
+        setSelectedId(null);
+      }
+    };
 
-  const handleImportPdf = () => inputRef.current?.click();
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [selectedId, calibration.validated]);
 
-  const onPdfChange = (event) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
+  const exportData = useMemo(() => buildExportJSON(pdf, calibration), [pdf, calibration]);
+  const exportText = useMemo(() => JSON.stringify(exportData, null, 2), [exportData]);
 
-    setPdf((current) => {
-      if (current.url) URL.revokeObjectURL(current.url);
-      return {
-        loaded: true,
-        fileName: file.name,
-        url: URL.createObjectURL(file),
-        calibrated: false,
-      };
+  const handleOpenFileDialog = () => fileInputRef.current?.click();
+
+  const handleLoadFile = async (file) => {
+    if (!file || file.type !== "application/pdf") return;
+
+    const result = await loadPDF(file, 1);
+    pdfDocRef.current = result.pdfDoc;
+
+    setPdf({
+      loaded: true,
+      bitmap: result.bitmap,
+      pageCount: result.pageCount,
+      currentPage: result.currentPage,
+      nativeW: result.nativeW,
+      nativeH: result.nativeH,
+      sourceName: result.sourceName,
+      annotations: {},
     });
+
+    setCalibration({
+      active: false,
+      point1: null,
+      point2: null,
+      distanceMm: "",
+      distancePx: null,
+      scalePxMm: null,
+      validated: false,
+      label: "",
+    });
+    setView({ zoom: 1, offsetX: 0, offsetY: 0 });
+    setMode(MODES.IDLE);
+    setSelectedId(null);
+    setDraftAnnotation(null);
+    annotationCounter.current = 1;
   };
 
-  const handleExportJson = () => {
+  const handleFileInput = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    await handleLoadFile(file);
+    event.target.value = "";
+  };
+
+  const handleChangePage = async (nextPage) => {
+    if (!pdfDocRef.current || nextPage < 1 || nextPage > pdf.pageCount) return;
+    const pageData = await renderPage(pdfDocRef.current, nextPage);
+    setPdf((prev) => ({
+      ...prev,
+      ...pageData,
+    }));
+    setSelectedId(null);
+    setDraftAnnotation(null);
+  };
+
+  const handleCreateAnnotation = (draft) => {
+    const id = `ANN-${String(annotationCounter.current++).padStart(3, "0")}`;
+    const annotation = buildAnnotation({
+      ...draft,
+      id,
+      page: pdf.currentPage,
+      scalePxMm: calibration.validated ? calibration.scalePxMm : null,
+    });
+
+    setPdf((prev) => ({
+      ...prev,
+      annotations: addAnnotation(prev.annotations, prev.currentPage, annotation),
+    }));
+    setSelectedId(id);
+  };
+
+  const handleUpdateAnnotation = (id, changes) => {
+    setPdf((prev) => ({
+      ...prev,
+      annotations: updateAnnotation(
+        prev.annotations,
+        prev.currentPage,
+        id,
+        changes,
+        calibration.validated ? calibration.scalePxMm : null,
+      ),
+    }));
+  };
+
+  const handleDeleteAnnotation = (id) => {
+    setPdf((prev) => ({
+      ...prev,
+      annotations: deleteAnnotation(prev.annotations, prev.currentPage, id),
+    }));
+    if (selectedId === id) setSelectedId(null);
+  };
+
+  const handleToggleLock = (id) => {
+    const annotation = currentAnnotations.find((item) => item.id === id);
+    if (!annotation) return;
+    handleUpdateAnnotation(id, { locked: !annotation.locked });
+  };
+
+  const handleDuplicateAnnotation = (id) => {
+    const nextId = `ANN-${String(annotationCounter.current++).padStart(3, "0")}`;
+    setPdf((prev) => ({
+      ...prev,
+      annotations: duplicateAnnotation(
+        prev.annotations,
+        prev.currentPage,
+        id,
+        nextId,
+        calibration.validated ? calibration.scalePxMm : null,
+      ),
+    }));
+  };
+
+  const handleStartCalibration = () => {
+    setCalibration((prev) => ({
+      ...prev,
+      active: true,
+      point1: null,
+      point2: null,
+      distanceMm: "",
+      distancePx: null,
+      validated: false,
+      scalePxMm: null,
+      label: "",
+    }));
+    setMode(MODES.CALIBRATE);
+    setSelectedId(null);
+  };
+
+  const handleCancelCalibration = () => {
+    setCalibration((prev) => ({ ...prev, active: false, point1: null, point2: null, distanceMm: "", distancePx: null }));
+    setMode(MODES.IDLE);
+  };
+
+  const handleValidateCalibration = () => {
+    if (!calibration.point1 || !calibration.point2 || !calibration.distanceMm) return;
+    const result = computeCalibration(calibration.point1, calibration.point2, calibration.distanceMm);
+    setCalibration((prev) => ({
+      ...prev,
+      ...result,
+      validated: true,
+      active: false,
+    }));
+    setPdf((prev) => ({
+      ...prev,
+      annotations: applyCalibrationToAnnotations(prev.annotations, result.scalePxMm),
+    }));
+  };
+
+  const handleResetCalibration = () => {
+    setCalibration({
+      active: false,
+      point1: null,
+      point2: null,
+      distanceMm: "",
+      distancePx: null,
+      scalePxMm: null,
+      validated: false,
+      label: "",
+    });
+    setPdf((prev) => ({
+      ...prev,
+      annotations: applyCalibrationToAnnotations(prev.annotations, null),
+    }));
+    setMode(MODES.IDLE);
+  };
+
+  const handleConfirmCalibration = () => {
+    setMode(MODES.SELECT);
+  };
+
+  const handleExport = () => {
     const blob = new Blob([exportText], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = getFilename(geometry);
+    link.download = getFilename(pdf.sourceName);
     link.click();
     URL.revokeObjectURL(url);
   };
 
-  const tabProps = {
-    geometry,
-    rebar,
-    conditions,
-    special,
-    draw,
-    setGeometry,
-    setRebar,
-    setConditions,
-    setSpecial,
-    setDraw,
-    derived,
-    barPositions,
-    exportText,
-    errors,
-    onExportJson: handleExportJson,
-  };
-
   return (
     <div className="app-shell">
-      <Header errors={errors} warnings={warnings} onImportPdf={handleImportPdf} pdf={pdf} />
-      <input ref={inputRef} type="file" accept="application/pdf" onChange={onPdfChange} hidden />
+      <Header calibration={calibration} mode={mode} onImportPdf={handleOpenFileDialog} pdf={pdf} />
 
-      <main className="app-layout">
-        <aside className="left-panel">
-          <div className="panel-topline">
-            <strong>Parametres</strong>
-            <button type="button" className="ghost-button compact" onClick={() => setGuideOpen((value) => !value)}>
-              {guideOpen ? "Masquer guide" : "Afficher guide"}
-            </button>
-          </div>
+      <input ref={fileInputRef} type="file" accept="application/pdf" hidden onChange={handleFileInput} />
 
-          <TabBar activeTab={activeTab} setActiveTab={setActiveTab} validations={validations} />
+      <main className="annotator-layout">
+        <LeftPanel
+          pdf={pdf}
+          calibration={calibration}
+          mode={mode}
+          setMode={setMode}
+          currentAnnotations={currentAnnotations}
+          selectedAnnotation={selectedAnnotation}
+          selectedId={selectedId}
+          onSelectAnnotation={setSelectedId}
+          onDeleteAnnotation={handleDeleteAnnotation}
+          onToggleLock={handleToggleLock}
+          onUpdateAnnotation={handleUpdateAnnotation}
+          onDuplicateAnnotation={handleDuplicateAnnotation}
+          onExport={handleExport}
+          onStartCalibration={handleStartCalibration}
+          onCancelCalibration={handleCancelCalibration}
+          onCalibrationDistanceChange={(distanceMm) => setCalibration((prev) => ({ ...prev, distanceMm }))}
+          onValidateCalibration={handleValidateCalibration}
+          onResetCalibration={handleResetCalibration}
+          onConfirmCalibration={handleConfirmCalibration}
+          canExport={canExport}
+        />
 
-          <div className="tab-content">
-            {activeTab === 1 ? <TabGeometry {...tabProps} /> : null}
-            {activeTab === 2 ? <TabRebar {...tabProps} /> : null}
-            {activeTab === 3 ? <TabJoints {...tabProps} /> : null}
-            {activeTab === 4 ? <TabSpecial {...tabProps} /> : null}
-            {activeTab === 5 ? <TabAppearance {...tabProps} /> : null}
-            {activeTab === 6 ? <TabReference {...tabProps} /> : null}
-            {activeTab === 7 ? <TabExport {...tabProps} /> : null}
-          </div>
-
-          <ValidationPanel validations={validations} setActiveTab={setActiveTab} />
-        </aside>
-
-        <section className="right-panel">
-          <SectionCanvas model={{ geometry, rebar, conditions, special, draw, barPositions, derived, barOverrides, interaction }} onImportPdf={handleImportPdf} pdf={pdf} />
-          <LengthTable derived={derived} rebar={rebar} />
-          <SnapHUD interaction={interaction} />
+        <section className="canvas-panel">
+          <CanvasMain
+            pdf={pdf}
+            calibration={calibration}
+            setCalibration={setCalibration}
+            view={view}
+            setView={setView}
+            mode={mode}
+            selectedId={selectedId}
+            setSelectedId={setSelectedId}
+            draftAnnotation={draftAnnotation}
+            setDraftAnnotation={setDraftAnnotation}
+            currentAnnotations={currentAnnotations}
+            onCreateAnnotation={handleCreateAnnotation}
+            onUpdateAnnotation={handleUpdateAnnotation}
+            onOpenFileDialog={handleOpenFileDialog}
+            onDropFile={handleLoadFile}
+            onChangePage={handleChangePage}
+          />
         </section>
       </main>
-
-      <GuideDrawer activeTab={activeTab} open={guideOpen} onClose={() => setGuideOpen(false)} />
-      <BarDialog interaction={interaction} onClose={() => setInteraction((prev) => ({ ...prev, showDialog: false }))} />
     </div>
   );
 }

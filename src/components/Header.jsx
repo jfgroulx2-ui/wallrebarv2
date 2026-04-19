@@ -1,20 +1,23 @@
 import { FileUp } from "lucide-react";
 
-function getStatus(errors, warnings) {
-  if (errors.length) return { label: "Erreur", className: "status-error" };
-  if (warnings.length) return { label: `${warnings.length} avert.`, className: "status-warning" };
-  return { label: "Conforme", className: "status-ok" };
+function modeLabel(mode) {
+  return {
+    idle: "Navigation",
+    calibrate: "Calibration",
+    annot_vertical: "Barre verticale",
+    annot_horizontal: "Barre horizontale",
+    select: "Selection",
+    pan: "Pan",
+  }[mode];
 }
 
-export default function Header({ errors, warnings, onImportPdf, pdf }) {
-  const status = getStatus(errors, warnings);
-
+export default function Header({ calibration, mode, onImportPdf, pdf }) {
   return (
     <header className="topbar">
       <div>
         <p className="eyebrow">GBI Experts-Conseils</p>
-        <h1>Wall Section Tool</h1>
-        <p className="tagline">Design once. Export. Execute.</p>
+        <h1>Rebar Annotator</h1>
+        <p className="tagline">Annoter l'armature directement sur une coupe PDF, puis exporter en JSON.</p>
       </div>
 
       <div className="topbar-actions">
@@ -22,7 +25,10 @@ export default function Header({ errors, warnings, onImportPdf, pdf }) {
           <FileUp size={16} />
           {pdf.loaded ? "Remplacer PDF" : "Importer PDF"}
         </button>
-        <div className={`status-pill ${status.className}`}>{status.label}</div>
+        <div className={`status-pill ${calibration.validated ? "status-ok" : "status-warning"}`}>
+          {calibration.validated ? "Calibre" : "Non calibre"}
+        </div>
+        <div className="status-pill status-neutral">{modeLabel(mode)}</div>
       </div>
     </header>
   );
